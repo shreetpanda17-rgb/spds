@@ -1,77 +1,80 @@
-import io, os, json, time
-import pandas as pd
-import plotly.express as px
 import streamlit as st
+import pandas as pd
 from core.engine import SPDSEngine
 
-st.set_page_config(page_title="SPDS Intelligence OS", page_icon="◈", layout="wide")
-st.title("◈ SPDS — Enterprise Intelligence Operating System")
-st.caption("Autonomous data science • forecasting • scenario intelligence • decision support")
+st.set_page_config(page_title="SPDS", page_icon="📊", layout="wide")
+st.title("SPDS — Strategic & Professional Data Science")
+st.caption("Autonomous data analysis and decision-support workspace")
 
-with st.sidebar:
-    st.header("Workspace")
-    uploaded=st.file_uploader("Upload company data",type=["csv","xlsx","xls","json","parquet"])
-    target=st.text_input("Target column (optional)")
-    date_col=st.text_input("Date column (optional)")
-    horizon=st.slider("Forecast horizon",1,52,12)
-    run=st.button("⚡ RUN AUTONOMOUS ANALYSIS",type="primary",use_container_width=True)
-    st.divider()
-    st.info("No API key is required for the analytical engine. An LLM can be connected later for richer reasoning.")
+uploaded = st.file_uploader("Upload a CSV or Excel dataset", type=["csv", "xlsx", "xls"])
+if uploaded is None:
+    st.info("Upload a dataset to begin.")
+    st.markdown("""
+### Included
+- Automatic profiling and data-quality checks
+- Exploratory summaries and correlations
+- IQR-based anomaly screening
+- Baseline Random Forest prediction
+- Automated business findings and next-step suggestions
 
-if uploaded:
-    raw=uploaded.getvalue(); name=uploaded.name
-    if st.session_state.get("dataset_name")!=name:
-        ext=os.path.splitext(name)[1].lower()
-        if ext==".csv": df=pd.read_csv(io.BytesIO(raw))
-        elif ext in (".xlsx",".xls"): df=pd.read_excel(io.BytesIO(raw))
-        elif ext==".json": df=pd.read_json(io.BytesIO(raw))
-        else: df=pd.read_parquet(io.BytesIO(raw))
-        st.session_state.dataset=df; st.session_state.dataset_name=name; st.session_state.results=None
-    df=st.session_state.dataset
-    st.success(f"Loaded {len(df):,} rows × {len(df.columns):,} columns — {name}")
-    m1,m2,m3,m4=st.columns(4)
-    m1.metric("Rows",f"{len(df):,}"); m2.metric("Columns",f"{len(df.columns):,}"); m3.metric("Missing cells",f"{int(df.isna().sum().sum()):,}"); m4.metric("Duplicates",f"{int(df.duplicated().sum()):,}")
-    if run:
-        with st.spinner("SPDS is executing independent analytical jobs in parallel…"):
-            engine=SPDSEngine(df)
-            st.session_state.results=engine.run_autonomous(target or None,date_col or None,horizon)
-        st.success(f"Analysis complete in {st.session_state.results['_meta'].data['total_seconds']:.2f}s")
+This is a decision-support prototype; important decisions should be validated with current data and domain expertise.
+""")
+    st.stop()
 
-if "results" in st.session_state and st.session_state.results:
-    r=st.session_state.results
-    tabs=st.tabs(["Executive","Data Quality","EDA","Models","Forecast","Scenarios","Anomalies","Raw Results"])
-    with tabs[0]:
-        st.subheader("Executive intelligence")
-        for x in r["insights"].data: st.write("• "+x)
-        st.subheader("Job status")
-        rows=[]
-        for k,v in r.items():
-            if k.startswith("_"): continue
-            rows.append({"job":k,"status":v.status,"seconds":round(v.duration_s,3),"summary":v.summary})
-        st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
-    with tabs[1]:
-        st.json(r["_meta"].data["profile"])
-        st.dataframe(df.head(100),use_container_width=True)
-    with tabs[2]:
-        d=r["eda"].data
-        if not d["describe"].empty: st.dataframe(d["describe"],use_container_width=True)
-        if not d["correlation"].empty: st.plotly_chart(px.imshow(d["correlation"],text_auto=True,title="Correlation matrix"),use_container_width=True)
-    with tabs[3]:
-        if r["automl"].status=="ok": st.dataframe(r["automl"].data["leaderboard"],use_container_width=True,hide_index=True)
-        else: st.warning(r["automl"].summary)
-    with tabs[4]:
-        if r["forecast"].status=="ok":
-            fc=r["forecast"].data["forecast"]; fig=px.line(fc,x="date",y=["forecast","lower_95","upper_95"],title="Forecast with uncertainty band"); st.plotly_chart(fig,use_container_width=True); st.dataframe(fc,use_container_width=True,hide_index=True)
-        else: st.warning(r["forecast"].summary)
-    with tabs[5]:
-        if r["scenarios"].status=="ok":
-            sc=r["scenarios"].data; st.dataframe(sc,use_container_width=True,hide_index=True); st.plotly_chart(px.bar(sc,x="scenario",y="estimated_value",title="Scenario values"),use_container_width=True)
-    with tabs[6]:
-        if r["anomalies"].status=="ok": st.dataframe(r["anomalies"].data,use_container_width=True,hide_index=True)
-        else: st.warning(r["anomalies"].summary)
-    with tabs[7]:
-        st.json({k:{"status":v.status,"duration_s":v.duration_s,"summary":v.summary,"error":v.error} for k,v in r.items() if k!="_meta"})
-else:
-    st.markdown("### Give SPDS a dataset and it does the workflow automatically")
-    st.markdown("**Profile → clean → explore → detect anomalies → compare models → forecast → simulate scenarios → produce evidence-backed insights.**")
-    st.code("Example request: upload sales data, select revenue as target, and press RUN AUTONOMOUS ANALYSIS.")
+try:
+    df = pd.read_csv(uploaded) if uploaded.name.lower().endswith(".csv") else pd.read_excel(uploaded)
+except Exception as e:
+    st.error(f"Could not read the dataset: {e}")
+    st.stop()
+
+if df.empty:
+    st.error("The uploaded dataset is empty.")
+    st.stop()
+
+engine = SPDSEngine(df)
+p = engine.profile()
+st.success(f"Loaded {p['rows']:,} rows × {p['columns']:,} columns")
+
+a, b, c, d = st.columns(4)
+a.metric("Rows", f"{p['rows']:,}")
+b.metric("Columns", f"{p['columns']:,}")
+c.metric("Missing cells", f"{p['missing_cells']:,}")
+d.metric("Duplicate rows", f"{p['duplicate_rows']:,}")
+
+t1, t2, t3, t4 = st.tabs(["Profile", "Quality & EDA", "Prediction", "Business Intelligence"])
+
+with t1:
+    st.dataframe(engine.column_profile(), use_container_width=True)
+
+with t2:
+    st.subheader("Quality")
+    st.dataframe(engine.quality_report(), use_container_width=True)
+    st.subheader("Numeric summary")
+    ns = engine.numeric_summary()
+    st.dataframe(ns, use_container_width=True) if not ns.empty else st.info("No numeric columns.")
+    st.subheader("Correlations")
+    cr = engine.correlation_matrix()
+    st.dataframe(cr, use_container_width=True) if not cr.empty else st.info("Not enough numeric columns.")
+    st.subheader("Potential anomalies")
+    ar = engine.anomaly_report()
+    st.dataframe(ar, use_container_width=True) if not ar.empty else st.info("No anomaly candidates detected.")
+
+with t3:
+    target = st.selectbox("Target column", ["— none —"] + list(df.columns))
+    if target != "— none —":
+        r = engine.predict(target)
+        if r["ok"]:
+            st.metric("Model", r["model"])
+            st.metric("Validation score", r["score_text"])
+            st.write(r["explanation"])
+            st.dataframe(r["feature_importance"], use_container_width=True)
+        else:
+            st.warning(r["message"])
+
+with t4:
+    st.subheader("Automated findings")
+    for x in engine.business_findings():
+        st.markdown(f"- {x}")
+    st.subheader("Recommended next steps")
+    for x in engine.next_steps():
+        st.markdown(f"- {x}")
